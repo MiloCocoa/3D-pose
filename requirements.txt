@@ -1,0 +1,8 @@
+# Core libraries
+torch
+torchvision
+torch-geometric  # For Graph Convolutional Networks
+numpy
+pandas
+tqdm
+scipy         # For interpolation in resampling
