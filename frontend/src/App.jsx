@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import './App.css';
 import { analyzePose, getApiBaseUrl } from './api/analyze';
+import { PoseVisualizer } from './PoseVisualizer';
 
 const EMPTY_FRAME = Array(57).fill(0);
 const DEFAULT_PAYLOAD = JSON.stringify(
@@ -121,6 +122,16 @@ function App() {
 
           {error ? <p className="status status--error">{error}</p> : null}
         </section>
+
+        {result && (
+          <section className="panel panel--visualizer">
+            <h2>Visualizer</h2>
+            <PoseVisualizer 
+              inputPoseData={result.skeleton_nodes?.data} 
+              correctedPoseData={result.target_pose?.data} 
+            />
+          </section>
+        )}
 
         <section className="panel panel--results">
           <h2>Response</h2>

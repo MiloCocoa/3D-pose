@@ -134,6 +134,41 @@ button:disabled {
   border: 1px solid #fecaca;
 }
 
+.panel--visualizer {
+  grid-column: 1 / -1;
+}
+
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.visualizer__controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.visualizer__controls input {
+  flex: 1;
+}
+
+.control-btn {
+  padding: 0.4rem 0.8rem;
+  background: #e2e8f0;
+  color: #334155;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.control-btn:hover {
+  background: #cbd5e1;
+  transform: none;
+}
+
 .panel--results h2 {
   margin: 0;
 }

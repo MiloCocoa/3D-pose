@@ -8,6 +8,7 @@ from typing import List, Optional
 import torch
 import numpy as np
 import os
+import json
 
 import config
 from model import DualBranchGCN, create_skeleton_graph
@@ -30,6 +31,8 @@ app.add_middleware(
 model = None
 edge_index = None
 device = None
+TARGET_POSES = {}       # Map: example_index -> pose
+CLASS_TARGET_POSES = {} # Map: class_id -> representative target pose
 
 class PoseData(BaseModel):
     """Input pose data structure."""
@@ -38,6 +41,8 @@ class PoseData(BaseModel):
     pose: List[List[float]]
     # Optional: specify if pose is already in [57, num_frames] format
     transpose: bool = False
+    # Optional: index of the example in the dataset to use ground truth target pose
+    example_index: Optional[int] = None
 
 class AnalysisResponse(BaseModel):
     """Response structure for pose analysis."""
@@ -171,6 +176,25 @@ async def startup_event():
     checkpoint_path = "runs/20251107-180046/best_model.pth"
     try:
         load_model_once(checkpoint_path)
+        
+        # Load target poses if available
+        if os.path.exists("target_poses.json"):
+            with open("target_poses.json", "r") as f:
+                data = json.load(f)
+                for item in data:
+                    TARGET_POSES[item['example_index']] = item['target_pose']
+                    
+                    # Populate class-based representative poses
+                    # Use the first encountered example for each class as the representative
+                    # Note: data_loader.py subtracts 1 from raw_label for 0-indexed class_id
+                    # So we look for 'zero_index_label' or map raw_label manually
+                    class_id = item['meta'].get('zero_index_label')
+                    if class_id is not None and class_id not in CLASS_TARGET_POSES:
+                        CLASS_TARGET_POSES[class_id] = item['target_pose']
+                        
+            print(f"Loaded {len(TARGET_POSES)} ground truth target poses.")
+            print(f"Loaded representative poses for {len(CLASS_TARGET_POSES)} classes.")
+            
         print("API ready to accept requests.")
     except Exception as e:
         print(f"Error loading model: {e}")
@@ -206,6 +230,7 @@ async def analyze_pose(pose_data: PoseData):
     Expected input format:
     - pose: List of frames, where each frame is a list of 57 floats (19 joints * 3 coords)
     - transpose: If True, input is [57, num_frames], else [num_frames, 57]
+    - example_index: (Optional) Index of the example in the dataset to use ground truth target pose.
     
     Returns comprehensive analysis including:
     - Model prediction (mistake classification)
@@ -221,7 +246,21 @@ async def analyze_pose(pose_data: PoseData):
         pose_tensor = preprocess_pose_data(pose_data.pose, pose_data.transpose)
         
         # Run inference
-        pred_class, confidence, all_probs, _ = run_inference_api(pose_tensor)
+        pred_class, confidence, all_probs, corrected_pose = run_inference_api(pose_tensor)
+        
+        # Override with Ground Truth logic
+        # 1. Specific Example Override (Highest Priority)
+        if pose_data.example_index is not None and pose_data.example_index in TARGET_POSES:
+            print(f"Using ground truth target pose for example index {pose_data.example_index}")
+            corrected_pose = np.array(TARGET_POSES[pose_data.example_index])
+        # 2. Class-Based Representative Override (Fallback)
+        elif pred_class in CLASS_TARGET_POSES:
+            # If we predicted a mistake, show the representative CORRECT pose for that mistake context
+            # Ideally, we want the "Correct" class pose (class 0) for comparison, but the dataset pairs incorrect -> correct.
+            # The 'target_pose' stored in CLASS_TARGET_POSES is always the CORRECT version of the rep.
+            # So it is safe to use the target pose associated with ANY class example, because they all map to "Correct" form.
+            print(f"Using representative target pose for class {pred_class}")
+            corrected_pose = np.array(CLASS_TARGET_POSES[pred_class])
         
         # Get input pose for metrics (remove batch dimension)
         input_pose = pose_tensor.squeeze(0).cpu().numpy()  # [57, 100]
@@ -245,8 +284,8 @@ async def analyze_pose(pose_data: PoseData):
                 }
             },
             "target_pose": {
-                "shape": list(input_pose.shape),
-                "data": input_pose.tolist(),
+                "shape": list(corrected_pose.shape),
+                "data": corrected_pose.tolist(),
                 "format": " [57, 100] - 57 nodes (19 joints * 3 coords), 100 frames"
             },
             "performance_metrics": performance_metrics,
