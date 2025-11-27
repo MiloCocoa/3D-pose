@@ -56,3 +56,18 @@ PyG requires special CUDA-compiled libraries. You **must** install these package
 ```
 pip install torch-scatter torch-sparse torch-cluster torch-spline-conv --index-url [https://data.pyg.org/whl/torch-2.3.0+cu121.html](https://data.pyg.org/whl/torch-2.3.0+cu121.html)
 ```
+
+## Frontend web client
+
+The repository now ships with a minimal React UI in [`frontend/`](frontend) that calls the FastAPI `/analyze` endpoint. Use it to paste pose JSON, upload a file exported from `pose_examples.json`, and inspect predictions/metrics without touching Python notebooks.
+
+1. Make sure the API server (`uvicorn api:app --reload`) is running and reachable from the browser.
+2. In a new terminal:
+   ```
+   cd frontend
+   npm install          # first run only
+   npm run dev
+   ```
+3. Visit the printed Vite URL (defaults to `http://localhost:5173`). The UI assumes the backend lives at `http://localhost:8000`; override it by creating a `.env` file in `frontend/` with `VITE_API_BASE_URL=https://your-host`.
+
+The form exposes a JSON textarea, optional file upload, and a transpose toggle. Responses are summarized (class name, confidence, metric preview) and the raw JSON is available for copy/paste into other tools.

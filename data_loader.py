@@ -31,7 +31,7 @@ class ExerciseDataset(Dataset):
         correct_poses, incorrect_poses = self._load_data(data_path, subject_ids)
         
         # 2. Pair sequences
-        self.pairs = self._pair_sequences(correct_poses, incorrect_poses) 
+        self.pairs, self.metadata = self._pair_sequences(correct_poses, incorrect_poses) 
         # self.pairs is now a list of:
         # (incorrect_pose_array, correct_pose_array, mistake_label)
 
@@ -97,6 +97,7 @@ class ExerciseDataset(Dataset):
         from the same subject, exercise, and repetition number.
         """
         pairs = []
+        metadata = []
         for (act, sub, lab, rep), inc_pose in incorrect_poses.items():
             # Find the corresponding "correct" repetition key
             # --- THIS IS THE KEY FIX ---
@@ -109,8 +110,15 @@ class ExerciseDataset(Dataset):
                 # We subtract 1 from the label to make it 0-indexed (0-11)
                 # This is crucial for nn.CrossEntropyLoss
                 pairs.append((inc_pose, cor_pose, lab - 1))
+                metadata.append({
+                    "act": act,
+                    "subject": sub,
+                    "raw_label": lab,
+                    "zero_index_label": lab - 1,
+                    "rep": rep
+                })
                 
-        return pairs
+        return pairs, metadata
 
     def _resample_sequence(self, seq, target_len):
         """
@@ -153,6 +161,10 @@ class ExerciseDataset(Dataset):
         # Final shape is [57, 100], which our model expects
         
         return input_pose, target_pose, torch.tensor(label, dtype=torch.long)
+
+    def get_metadata(self, index):
+        """Returns metadata for the given sample index."""
+        return self.metadata[index]
 
 def create_dataloaders(data_path, batch_size=None):
     """
