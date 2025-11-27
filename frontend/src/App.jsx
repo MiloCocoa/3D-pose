@@ -188,13 +188,22 @@ function App() {
 }
 
 function formatMetric(value) {
-  if (typeof value === 'number') {
-    return value.toFixed(3);
+  try {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value.toFixed(2) : String(value);
+    }
+    if (typeof value === 'object' && value !== null) {
+      return JSON.stringify(value, (key, val) => {
+        if (typeof val === 'number') {
+          return Number.isFinite(val) ? Number(val.toFixed(2)) : String(val);
+        }
+        return val;
+      });
+    }
+    return String(value);
+  } catch (e) {
+    return 'Error';
   }
-  if (typeof value === 'object') {
-    return JSON.stringify(value);
-  }
-  return String(value);
 }
 
 export default App;

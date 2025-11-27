@@ -6,3 +6,8 @@ numpy
 pandas
 tqdm
 scipy         # For interpolation in resampling
+
+# API dependencies
+fastapi
+uvicorn[standard]
+pydantic

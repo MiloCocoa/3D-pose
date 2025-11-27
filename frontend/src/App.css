@@ -174,7 +174,7 @@ button:disabled {
 
 .metrics-preview dl {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.75rem;
   margin: 0;
 }
@@ -182,12 +182,16 @@ button:disabled {
 .metrics-preview dt {
   font-weight: 600;
   color: #1e293b;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .metrics-preview dd {
   margin: 0.15rem 0 0;
   font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
   color: #334155;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .metrics-preview div {

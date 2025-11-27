@@ -17,6 +17,13 @@ JOINT_INDICES = {
     'right_ankle': 14,    # Joint 14
     'left_shoulder': 5,   # Joint 5 (from bone list [1, 5])
     'right_shoulder': 2,  # Joint 2 (from bone list [1, 2])
+    # Foot joints (Mapped based on model.py topology)
+    # Left Ankle (11) connects to 17 and 18 -> Left Heel/Toe
+    # Right Ankle (14) connects to 15 -> Right Toe
+    'left_heel': 17,
+    'left_toe': 18,
+    'right_heel': 14, # Using Right Ankle as proxy for Heel
+    'right_toe': 15,
 }
 
 def pose_to_joints(pose_array):
@@ -104,45 +111,93 @@ def calculate_angle(p1, p2, p3):
     
     return angle
 
-def calculate_squat_speed(pose_joints, joint_name='hip_center'):
+def get_floor_plane(pose_joints, frame_idx):
     """
-    Calculate squat speed metrics from hip joint movement.
+    Calculates the floor plane for a specific frame using SVD on all 4 foot points:
+    Left Toe, Right Toe, Left Heel, Right Heel.
     
-    Args:
-        pose_joints: [num_frames, 19, 3] array
-        joint_name: joint to track (default: 'hip_center')
+    Plane Equation: ax + by + cz + d = 0
+    Normal vector n = (a, b, c)
     
     Returns:
-        dict with speed metrics
+        normal (np.array [3]), d (float), centroid (np.array [3])
     """
-    hip_positions = get_joint_position(pose_joints, joint_name)  # [num_frames, 3]
-    num_frames = hip_positions.shape[0]
+    l_toe = get_joint_position(pose_joints, 'left_toe', frame_idx)
+    r_toe = get_joint_position(pose_joints, 'right_toe', frame_idx)
+    l_heel = get_joint_position(pose_joints, 'left_heel', frame_idx)
+    r_heel = get_joint_position(pose_joints, 'right_heel', frame_idx)
     
-    # Calculate velocity (units/frame) for each frame
-    velocities = np.zeros(num_frames)
-    for i in range(1, num_frames):
-        # Euclidean distance between consecutive frames
-        velocities[i] = np.linalg.norm(hip_positions[i] - hip_positions[i-1])
+    # Collect points
+    points = np.array([l_toe, r_toe, l_heel, r_heel])
     
-    # Find bottom of squat (maximum Y position, assuming Y is vertical)
-    # In typical 3D pose, Y might be up or down depending on coordinate system
-    # We'll use the frame with maximum Y (lowest point in typical systems)
-    y_positions = hip_positions[:, 1]  # Y coordinate
-    bottom_frame = np.argmax(y_positions)  # Frame with highest Y (lowest point)
+    # Calculate centroid
+    centroid = np.mean(points, axis=0)
+    
+    # Center points
+    centered_points = points - centroid
+    
+    # Use SVD to find the normal vector (singular vector corresponding to smallest singular value)
+    # U, S, Vt = np.linalg.svd(centered_points)
+    # Normal is the last row of Vt (or last column of V)
+    try:
+        _, _, vt = np.linalg.svd(centered_points)
+        normal = vt[-1]
+    except np.linalg.LinAlgError:
+        return np.array([0, 1, 0]), 0.0, centroid
+    
+    # Ensure normal points "up" (assuming Y is generally up/down axis in this data)
+    # We check dot product with standard up vector [0, 1, 0]
+    if np.dot(normal, np.array([0, 1, 0])) < 0:
+        normal = -normal
+
+    # d = -n . centroid
+    d = -np.dot(normal, centroid)
+    
+    # Base centroid for balance metrics (can use same centroid)
+    return normal, d, centroid
+
+def calculate_dist_to_plane(point, normal, d):
+    """Calculates signed distance from point to plane."""
+    return np.dot(normal, point) + d
+
+def project_point_to_plane(point, normal, d):
+    """Projects a point onto the plane."""
+    dist = calculate_dist_to_plane(point, normal, d)
+    return point - dist * normal
+
+def calculate_squat_speed(pose_joints, joint_name='hip_center'):
+    """
+    Calculate squat speed metrics based on hip movement relative to the dynamic floor plane.
+    """
+    num_frames = pose_joints.shape[0]
+    hip_positions = get_joint_position(pose_joints, joint_name)
+    
+    distances_to_floor = []
+    
+    # Calculate hip-to-floor distance for every frame
+    for i in range(num_frames):
+        normal, d, _ = get_floor_plane(pose_joints, i)
+        dist = abs(calculate_dist_to_plane(hip_positions[i], normal, d))
+        distances_to_floor.append(dist)
+        
+    distances_to_floor = np.array(distances_to_floor)
+    
+    # Calculate velocity (change in distance per frame)
+    velocities = np.abs(np.diff(distances_to_floor))
+    
+    # Find bottom of squat (minimum distance to floor)
+    bottom_frame = np.argmin(distances_to_floor)
     
     # Split into descent (0 to bottom) and ascent (bottom to end)
-    descent_velocities = velocities[1:bottom_frame+1] if bottom_frame > 0 else velocities[1:2]
-    ascent_velocities = velocities[bottom_frame+1:] if bottom_frame < num_frames - 1 else velocities[-1:]
+    descent_velocities = velocities[:bottom_frame] if bottom_frame > 0 else velocities[:1]
+    ascent_velocities = velocities[bottom_frame:] if bottom_frame < num_frames - 1 else velocities[-1:]
     
-    # Calculate metrics
     avg_speed_descent = np.mean(descent_velocities) if len(descent_velocities) > 0 else 0.0
     avg_speed_ascent = np.mean(ascent_velocities) if len(ascent_velocities) > 0 else 0.0
-    avg_speed_combined = np.mean(velocities[1:]) if num_frames > 1 else 0.0
+    avg_speed_combined = np.mean(velocities) if len(velocities) > 0 else 0.0
     
-    # Peak speed
-    peak_speed = np.max(velocities)
-    peak_speed_frame = np.argmax(velocities)
-    peak_speed_position = hip_positions[peak_speed_frame].tolist()
+    peak_speed = np.max(velocities) if len(velocities) > 0 else 0.0
+    peak_speed_frame = np.argmax(velocities) + 1 if len(velocities) > 0 else 0
     
     return {
         "average_speed_descent": float(avg_speed_descent),
@@ -151,37 +206,37 @@ def calculate_squat_speed(pose_joints, joint_name='hip_center'):
         "peak_speed": {
             "value": float(peak_speed),
             "frame": int(peak_speed_frame),
-            "position": peak_speed_position
+            "position": hip_positions[peak_speed_frame].tolist()
         }
     }
 
 def calculate_squat_depth(pose_joints):
     """
-    Calculate squat depth (minimum hip height).
-    
-    Args:
-        pose_joints: [num_frames, 19, 3] array
-    
-    Returns:
-        dict with depth metrics
+    Calculate squat depth as the vertical displacement of the hip relative to the floor plane.
     """
-    hip_positions = get_joint_position(pose_joints, 'hip_center')  # [num_frames, 3]
-    y_positions = hip_positions[:, 1]  # Y coordinate
+    num_frames = pose_joints.shape[0]
+    hip_positions = get_joint_position(pose_joints, 'hip_center')
     
-    # Initial hip height
-    initial_height = float(y_positions[0])
+    distances_to_floor = []
     
-    # Minimum hip height (deepest point)
-    min_height = float(np.min(y_positions))
-    min_height_frame = int(np.argmin(y_positions))
+    for i in range(num_frames):
+        normal, d, _ = get_floor_plane(pose_joints, i)
+        dist = abs(calculate_dist_to_plane(hip_positions[i], normal, d))
+        distances_to_floor.append(dist)
     
-    # Depth (distance from initial to minimum)
-    depth = float(initial_height - min_height)
+    distances_to_floor = np.array(distances_to_floor)
+    
+    initial_height = distances_to_floor[0]
+    min_height = np.min(distances_to_floor)
+    min_height_frame = int(np.argmin(distances_to_floor))
+    
+    # Depth is how much the hip lowered
+    depth = initial_height - min_height
     
     return {
-        "initial_height": initial_height,
-        "minimum_height": min_height,
-        "depth": depth,
+        "initial_height": float(initial_height),
+        "minimum_height": float(min_height),
+        "depth": float(depth),
         "depth_frame": min_height_frame
     }
 
@@ -298,38 +353,40 @@ def calculate_hip_angles(pose_joints):
 
 def calculate_balance_metrics(pose_joints):
     """
-    Calculate balance and stability metrics.
+    Calculate balance metrics using the dynamic floor plane.
+    Balance is assessed by projecting the hip center (COM proxy) onto the floor plane
+    and measuring its distance from the centroid of the base of support.
     
-    Args:
-        pose_joints: [num_frames, 19, 3] array
-    
-    Returns:
-        dict with balance metrics
+    Base of Support is defined by: Left Toe, Right Toe, Midpoint(Heels).
     """
-    left_ankle_positions = get_joint_position(pose_joints, 'left_ankle')  # [num_frames, 3]
-    right_ankle_positions = get_joint_position(pose_joints, 'right_ankle')  # [num_frames, 3]
-    hip_positions = get_joint_position(pose_joints, 'hip_center')  # [num_frames, 3]
+    num_frames = pose_joints.shape[0]
+    hip_positions = get_joint_position(pose_joints, 'hip_center')
     
-    # Calculate center of mass (approximate as hip position)
-    com_x = hip_positions[:, 0]  # X coordinate
-    com_z = hip_positions[:, 2]  # Z coordinate
+    deviations = []
     
-    # Base of support (line between ankles)
-    base_center_x = (left_ankle_positions[:, 0] + right_ankle_positions[:, 0]) / 2
-    base_center_z = (left_ankle_positions[:, 2] + right_ankle_positions[:, 2]) / 2
+    for i in range(num_frames):
+        normal, d, base_centroid = get_floor_plane(pose_joints, i)
+        
+        # Project hip to plane
+        hip_projected = project_point_to_plane(hip_positions[i], normal, d)
+        
+        # Distance between projected hip and base centroid
+        deviation = np.linalg.norm(hip_projected - base_centroid)
+        deviations.append(deviation)
+        
+    deviations = np.array(deviations)
     
-    # Distance from COM to base center (lateral stability)
-    lateral_displacement = np.sqrt((com_x - base_center_x)**2 + (com_z - base_center_z)**2)
-    
-    # Base of support width
-    base_width = np.linalg.norm(left_ankle_positions - right_ankle_positions, axis=1)
+    # Base of support width (distance between feet)
+    left_ankle = get_joint_position(pose_joints, 'left_ankle')
+    right_ankle = get_joint_position(pose_joints, 'right_ankle')
+    base_width = np.linalg.norm(left_ankle - right_ankle, axis=1)
     
     return {
         "lateral_displacement": {
-            "values": lateral_displacement.tolist(),
-            "mean": float(np.mean(lateral_displacement)),
-            "std": float(np.std(lateral_displacement)),
-            "max": float(np.max(lateral_displacement))
+            "values": deviations.tolist(),
+            "mean": float(np.mean(deviations)),
+            "std": float(np.std(deviations)),
+            "max": float(np.max(deviations))
         },
         "base_of_support_width": {
             "values": base_width.tolist(),
