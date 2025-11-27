@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import './App.css';
 import { analyzePose, getApiBaseUrl } from './api/analyze';
 import { PoseVisualizer } from './PoseVisualizer';
+import { MetricsCharts } from './MetricsCharts';
 
 const EMPTY_FRAME = Array(57).fill(0);
 const DEFAULT_PAYLOAD = JSON.stringify(
@@ -184,6 +185,10 @@ function App() {
                     ))}
                   </dl>
                 </div>
+              )}
+
+              {result.performance_metrics && (
+                <MetricsCharts metrics={result.performance_metrics} />
               )}
 
               <details className="raw-json" open>
