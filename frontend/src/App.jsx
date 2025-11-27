@@ -174,16 +174,20 @@ function App() {
               </div>
 
               {metricsPreview.length > 0 && (
-                <div className="metrics-preview">
-                  <p className="results__label">Metrics snapshot</p>
-                  <dl>
+                <div className="metrics-snapshot">
+                  <p className="results__label">Metrics Snapshot</p>
+                  <div className="metrics-list">
                     {metricsPreview.map(([key, value]) => (
-                      <div key={key}>
-                        <dt>{key}</dt>
-                        <dd>{formatMetric(value)}</dd>
-                      </div>
+                      <details key={key} className="metric-group-accordion">
+                        <summary className="metric-group-summary">
+                          {key.replace(/_/g, ' ').toUpperCase()}
+                        </summary>
+                        <div className="metric-content">
+                          <pre>{formatMetric(value)}</pre>
+                        </div>
+                      </details>
                     ))}
-                  </dl>
+                  </div>
                 </div>
               )}
 
@@ -209,12 +213,16 @@ function formatMetric(value) {
       return Number.isFinite(value) ? value.toFixed(2) : String(value);
     }
     if (typeof value === 'object' && value !== null) {
-      return JSON.stringify(value, (key, val) => {
-        if (typeof val === 'number') {
-          return Number.isFinite(val) ? Number(val.toFixed(2)) : String(val);
-        }
-        return val;
-      });
+      return JSON.stringify(
+        value,
+        (key, val) => {
+          if (typeof val === 'number') {
+            return Number.isFinite(val) ? Number(val.toFixed(2)) : String(val);
+          }
+          return val;
+        },
+        2
+      );
     }
     return String(value);
   } catch (e) {

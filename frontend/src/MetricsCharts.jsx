@@ -2,6 +2,20 @@ import { useState, useMemo } from 'react';
 
 const METRIC_GROUPS = [
   {
+    title: 'Squat Speed',
+    key: 'squat_speed',
+    series: [
+      { key: 'velocity_profile', name: 'Velocity', color: '#8884d8' },
+    ],
+  },
+  {
+    title: 'Squat Depth',
+    key: 'squat_depth',
+    series: [
+      { key: 'height_profile', name: 'Hip Height', color: '#82ca9d' },
+    ],
+  },
+  {
     title: 'Knee Angles (Deg)',
     key: 'knee_angles',
     series: [
@@ -111,64 +125,41 @@ function SimpleLineChart({ data, series, width = 600, height = 300 }) {
 }
 
 export function MetricsCharts({ metrics }) {
-  const [selectedGroup, setSelectedGroup] = useState(METRIC_GROUPS[0]);
-
   if (!metrics) return null;
-
-  // Prepare data
-  const firstSeriesKey = selectedGroup.series[0].key;
-  const firstDataArray = getNestedValue(metrics[selectedGroup.key], firstSeriesKey);
-
-  if (!firstDataArray || !Array.isArray(firstDataArray)) {
-    return (
-      <div className="metrics-charts">
-        <div className="chart-controls">
-          {METRIC_GROUPS.map((group) => (
-            <button
-              key={group.title}
-              className={selectedGroup.title === group.title ? 'active' : ''}
-              onClick={() => setSelectedGroup(group)}
-            >
-              {group.title}
-            </button>
-          ))}
-        </div>
-        <p style={{ padding: '1rem', color: '#64748b' }}>
-          No graph data available for <strong>{selectedGroup.title}</strong>.
-        </p>
-      </div>
-    );
-  }
-
-  const chartData = firstDataArray.map((_, index) => {
-    const point = { frame: index };
-    selectedGroup.series.forEach((s) => {
-      const arr = getNestedValue(metrics[selectedGroup.key], s.key);
-      let val = arr ? arr[index] : 0;
-      if (typeof val !== 'number' || !isFinite(val)) val = 0;
-      point[s.name] = val;
-    });
-    return point;
-  });
 
   return (
     <div className="metrics-charts">
-      <div className="chart-controls">
-        {METRIC_GROUPS.map((group) => (
-          <button
-            key={group.title}
-            className={selectedGroup.title === group.title ? 'active' : ''}
-            onClick={() => setSelectedGroup(group)}
-          >
-            {group.title}
-          </button>
-        ))}
-      </div>
+      {METRIC_GROUPS.map((group, idx) => {
+        // Prepare data for this specific group
+        const firstSeriesKey = group.series[0].key;
+        const firstDataArray = getNestedValue(metrics[group.key], firstSeriesKey);
 
-      <div className="chart-container" style={{ width: '100%', padding: '10px 0' }}>
-        <h3>{selectedGroup.title}</h3>
-        <SimpleLineChart data={chartData} series={selectedGroup.series} />
-      </div>
+        if (!firstDataArray || !Array.isArray(firstDataArray)) {
+          return null;
+        }
+
+        const chartData = firstDataArray.map((_, index) => {
+          const point = { frame: index };
+          group.series.forEach((s) => {
+            const arr = getNestedValue(metrics[group.key], s.key);
+            let val = arr ? arr[index] : 0;
+            if (typeof val !== 'number' || !isFinite(val)) val = 0;
+            point[s.name] = val;
+          });
+          return point;
+        });
+
+        return (
+          <details key={group.key} className="metric-group-accordion" open={idx === 0}>
+            <summary className="metric-group-summary">
+              {group.title}
+            </summary>
+            <div className="chart-container" style={{ width: '100%', padding: '10px 0' }}>
+              <SimpleLineChart data={chartData} series={group.series} />
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }

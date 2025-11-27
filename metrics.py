@@ -207,7 +207,8 @@ def calculate_squat_speed(pose_joints, joint_name='hip_center'):
             "value": float(peak_speed),
             "frame": int(peak_speed_frame),
             "position": hip_positions[peak_speed_frame].tolist()
-        }
+        },
+        "velocity_profile": velocities.tolist()
     }
 
 def calculate_squat_depth(pose_joints):
@@ -237,7 +238,8 @@ def calculate_squat_depth(pose_joints):
         "initial_height": float(initial_height),
         "minimum_height": float(min_height),
         "depth": float(depth),
-        "depth_frame": min_height_frame
+        "depth_frame": min_height_frame,
+        "height_profile": distances_to_floor.tolist()
     }
 
 def calculate_knee_angles(pose_joints):
