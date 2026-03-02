@@ -81,10 +81,10 @@ def get_class_name(class_id: int) -> str:
     """Map class ID to human-readable name."""
     class_names = {
         0: "Correct",
-        1: "Mistake_1",
-        2: "Mistake_2",
-        3: "Mistake_3",
-        4: "Mistake_4",
+        1: "Feet too wide",
+        2: "Knees inward",
+        3: "Not low enough",
+        4: "Front bent",
         5: "Mistake_5",
         6: "Mistake_6",
         7: "Mistake_7",
